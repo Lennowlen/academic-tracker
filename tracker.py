@@ -20,7 +20,8 @@ class UTTracker:
             "Sistem Informasi": "120363426280722869@g.us",
             "Statistika": "120363426301696334@g.us",
             "Infrastruktur TI": "120363407647958870@g.us",
-            "Bahasa Indonesia": "120363424779208094@g.us"
+            "Bahasa Indonesia": "120363424779208094@g.us",
+            "Sains Data": "120363427288134022@g.us"
         }
         self.default_group = "120363427246480048@g.us" # Main Community Group
 
