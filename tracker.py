@@ -38,13 +38,17 @@ class UTTracker:
             try:
                 resp = await client.post(url, json=payload, headers=headers)
                 data = resp.json()
-                if data and not data[0].get("error"):
+                if data and data[0].get("error"):
+                    print(f"Moodle Error: {data[0]['exception']}")
+                    return None
+                if data:
                     return data[0]["data"]["events"]
             except Exception as e:
-                print(f"API Error: {e}")
-        return []
+                print(f"Moodle API Connection Error: {e}")
+        return None
 
     async def send_whatsapp(self, chat_id, text):
+        print(f"Sending WA to {chat_id}...")
         payload = {
             "chatId": chat_id,
             "message": text
@@ -55,10 +59,72 @@ class UTTracker:
         except Exception as e:
             print(f"Failed to send WA to {chat_id}: {e}")
 
+    async def get_myut_config(self):
+        url = "https://api-srs.ut.ac.id/panel-service/v1/api-configs/MY_UT_WEB"
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "authorization": f"Bearer {self.myut_token}",
+            "origin": "https://myut.ut.ac.id",
+            "referer": "https://myut.ut.ac.id/",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(url, headers=headers)
+                return resp.json()
+            except Exception as e:
+                print(f"MyUT API Error: {e}")
+        return None
+
+    async def get_kotobee_modules(self):
+        url = "https://univterbuka.kotobee.com/library/ebook/all"
+        payload = {
+            "env": "library",
+            "email": os.getenv("KOTOBEE_EMAIL"),
+            "pwd": os.getenv("KOTOBEE_PWD"),
+            "cloudid": os.getenv("KOTOBEE_CLOUDID"),
+            "fingerprint": "f5def864d28a3a4e5cf270d40d92ee3e",
+            "account": "true",
+            "max": 20,
+            "v": "1.8",
+            "includeauthor": 1,
+            "includecategory": 1
+        }
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.post(url, data=payload, headers=headers)
+                return resp.json()
+            except Exception as e:
+                print(f"Kotobee API Error: {e}")
+        return None
+
     async def run_check(self):
-        print(f"[{datetime.now()}] Checking deadlines...")
+        print(f"[{datetime.now()}] Checking MyUT status...")
+        myut_config = await self.get_myut_config()
+        if not myut_config or myut_config.get("status") != "Sukses":
+            print("❌ MyUT Token expired or invalid.")
+        else:
+            print("✅ MyUT Token is valid.")
+
+        print(f"[{datetime.now()}] Checking Kotobee status...")
+        kotobee_data = await self.get_kotobee_modules()
+        if not kotobee_data or not isinstance(kotobee_data, list):
+            print("❌ Kotobee credentials invalid.")
+        else:
+            print(f"✅ Kotobee is valid ({len(kotobee_data)} ebooks found).")
+
+        print(f"[{datetime.now()}] Checking Elearning deadlines...")
         events = await self.get_elearning_deadlines()
         
+        if events is None:
+            print("⚠️ MoodleSession expired or Moodle API error.")
+            # Notify boss if needed, but usually we just wait for update
+            return
+            
         if not events:
             await self.send_whatsapp(self.default_group, "Halo Boss! L.I.F.A. cek tidak ada deadline mendesak hari ini. (╹▽╹)")
             return
